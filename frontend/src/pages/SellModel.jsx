@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   CubeIcon, 
   DocumentTextIcon, 
   CurrencyDollarIcon,
   TagIcon,
-  PhotoIcon,
   CloudArrowUpIcon
 } from '@heroicons/react/24/outline';
+import getWeb3 from '../web3';
+import getContract from '../contract';
 
 const FormField = ({ icon: Icon, label, type = "text", placeholder, value, onChange }) => (
   <div className="mb-6">
@@ -35,22 +37,126 @@ const FormField = ({ icon: Icon, label, type = "text", placeholder, value, onCha
 );
 
 const SellModel = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
     category: '',
   });
+  const [account, setAccount] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [web3, setWeb3] = useState(null);
+  const [contract, setContract] = useState(null);
+  const [error, setError] = useState(null);
 
-  const handleChange = (field) => (e) => {
+  // Handle form field changes
+  const handleChange = useCallback((field) => (e) => {
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
-  };
+  }, []);
 
-  const handleSubmit = (e) => {
+  // Handle account changes
+  const handleAccountsChanged = useCallback((accounts) => {
+    if (accounts.length > 0) {
+      setAccount(accounts[0]);
+      setError(null);
+    } else {
+      setAccount('');
+      setError("Please connect to MetaMask to sell models.");
+    }
+  }, []);
+
+  // Handle form submission
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log(formData);
-  };
+    
+    if (!web3 || !contract || !account) {
+      alert("Please connect to MetaMask to sell models.");
+      return;
+    }
+    
+    if (!formData.name || !formData.description || !formData.price) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Convert price to wei
+      const priceInWei = web3.utils.toWei(formData.price, 'ether');
+      
+      // Create model
+      await contract.createModel(
+        formData.name,
+        formData.description,
+        priceInWei,
+        { from: account }
+      );
+      
+      setLoading(false);
+      alert("Model listed successfully!");
+      navigate('/models');
+    } catch (err) {
+      console.error("Error creating model:", err);
+      setLoading(false);
+      if (err.message && err.message.includes("User denied")) {
+        alert("Transaction was rejected in MetaMask.");
+      } else {
+        alert("Failed to list model. Please try again.");
+      }
+    }
+  }, [web3, contract, account, formData, navigate]);
+
+  // Initialize web3 and contract
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // Get web3 instance
+        console.log("Initializing web3 for SellModel page...");
+        const web3Instance = await getWeb3();
+        setWeb3(web3Instance);
+        
+        // Get user's Ethereum account
+        const accounts = await web3Instance.eth.getAccounts();
+        if (accounts.length > 0) {
+          console.log("Connected with account:", accounts[0]);
+          setAccount(accounts[0]);
+        } else {
+          console.warn("No accounts found in SellModel page");
+          setError("Please connect to MetaMask to sell models. Click the MetaMask icon and connect your account.");
+        }
+
+        // Get contract instance
+        try {
+          console.log("Getting contract instance for SellModel page...");
+          const { instance } = await getContract();
+          console.log("Contract instance obtained successfully");
+          setContract(instance);
+        } catch (contractError) {
+          console.error("Error getting contract instance:", contractError);
+          setError(`Contract connection error: ${contractError.message || "Unknown error"}. Please make sure you're connected to the correct network.`);
+        }
+      } catch (err) {
+        console.error("Error initializing web3:", err);
+        setError(`Web3 connection error: ${err.message || "Unknown error"}. Please make sure MetaMask is installed and connected.`);
+      }
+    };
+
+    init();
+
+    // Setup MetaMask account change listener
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+    }
+
+    return () => {
+      // Cleanup MetaMask listeners
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      }
+    };
+  }, [handleAccountsChanged]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-blue-900 py-20 px-4 sm:px-6 lg:px-8">
@@ -65,6 +171,15 @@ const SellModel = () => {
           <p className="text-xl text-blue-200">
             Share your innovation with the world
           </p>
+          {account ? (
+            <p className="text-sm text-blue-300 mt-2">
+              Connected Account: {account.substring(0, 6)}...{account.substring(account.length - 4)}
+            </p>
+          ) : (
+            <p className="text-sm text-red-300 mt-2">
+              {error || "Please connect to MetaMask to sell models."}
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white/10 backdrop-blur-lg rounded-xl p-8 shadow-xl border border-white/10">
@@ -87,9 +202,9 @@ const SellModel = () => {
 
           <FormField
             icon={CurrencyDollarIcon}
-            label="Price"
+            label="Price (ETH)"
             type="number"
-            placeholder="Set your price"
+            placeholder="Set your price in ETH"
             value={formData.price}
             onChange={handleChange('price')}
           />
@@ -115,9 +230,10 @@ const SellModel = () => {
           <div className="flex justify-center">
             <button
               type="submit"
-              className="px-8 py-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              disabled={loading || !account}
+              className={`px-8 py-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${(loading || !account) ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              List Your Model
+              {loading ? 'Processing...' : 'List Your Model'}
             </button>
           </div>
         </form>
@@ -132,7 +248,7 @@ const SellModel = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style jsx="true">{`
         @keyframes blob {
           0% { transform: translate(0px, 0px) scale(1); }
           33% { transform: translate(30px, -50px) scale(1.1); }
