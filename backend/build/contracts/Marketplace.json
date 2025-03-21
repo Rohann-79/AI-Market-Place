@@ -9601,10 +9601,16 @@
       "links": {},
       "address": "0x3F2e28eAf710b19e7472195CE825ca4277a9803C",
       "transactionHash": "0xf689f8e0fa254296f67ba82aa85bd088044654dcea9caaf96dc4dbe798621bf3"
+    },
+    "1742550974740": {
+      "events": {},
+      "links": {},
+      "address": "0xc8613b4C5b0E5772D3CAdeF7D104EF51a2722004",
+      "transactionHash": "0x8c9b06e0f965b06549f097559af9e14535bccd6a7a6d0b0aab56889c28bb6e23"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-03-20T14:32:37.293Z",
+  "updatedAt": "2025-03-21T09:56:20.031Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
